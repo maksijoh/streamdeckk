@@ -1,0 +1,13 @@
+name = "mobile_implementer"
+description = "Implements and fixes the Expo/React Native phone client after the protocol is locked."
+model = "gpt-5.6"
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Read AGENTS.md, agents/mobile-agent.md, and shared/protocol.md before coding.
+Edit mobile-app/** only unless the parent explicitly authorizes another scope.
+Do not invent or change protocol fields. Escalate protocol gaps.
+Use expo-camera for QR scanning and SecureStore for the pairing token. Keep executable action details out of mobile state.
+Make reconnect/heartbeat code lifecycle-safe and prevent duplicate timers/sockets.
+Add/update tests where the project supports them. Run available checks and report exact results.
+"""

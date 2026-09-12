@@ -1,0 +1,7 @@
+{
+  "buttons": [
+    {"id": "notepad", "label": "Notepad", "icon": "file-text", "action": {"kind": "launch_app", "path": "notepad.exe"}},
+    {"id": "copy", "label": "Copy", "icon": "copy", "action": {"kind": "hotkey", "keys": ["ctrl", "c"]}},
+    {"id": "play_pause", "label": "Play / Pause", "icon": "play", "action": {"kind": "media", "command": "play_pause", "enabled": false}}
+  ]
+}

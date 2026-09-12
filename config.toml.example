@@ -1,0 +1,15 @@
+# Merge the relevant parts into ~/.codex/config.toml or a project/profile config.
+# Project-specific agents live under .codex/agents/ and override these defaults
+# when their files set model/model_reasoning_effort explicitly.
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 6
+
+# Economical default for unspecified subagents. Critical custom agents override
+# this with gpt-5.6 + high/xhigh reasoning in .codex/agents/*.toml.
+default_subagent_model = "gpt-5.6-terra"
+default_subagent_reasoning_effort = "medium"
+
+# Keep parent-visible interruption messages unless you have a reason to hide them.
+interrupt_message = true

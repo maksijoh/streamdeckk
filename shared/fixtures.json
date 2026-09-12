@@ -1,0 +1,40 @@
+{
+  "valid": [
+    {"type":"press","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ts":1737020000000},
+    {"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":true,"error":null},
+    {"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":false,"error":{"code":"unknown_button","message":"Button does not exist"}},
+    {"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":false,"error":{"code":"invalid_message","message":"Invalid press message"}},
+    {"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":false,"error":{"code":"action_failed","message":"Action failed"}},
+    {"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":false,"error":{"code":"unsupported_action","message":"Action is unsupported or disabled"}},
+    {"type":"config","protocolVersion":1,"revision":1,"buttons":[{"id":"btn_1","label":"Music","icon":"music"},{"id":"btn_2","label":"Mute","icon":"mic-off"},{"id":"btn_3","label":"Без значка"}]},
+    {"type":"config","protocolVersion":1,"revision":0,"buttons":[]},
+    {"type":"ping","requestId":"2f663e57-13de-4f61-81db-cfa90ef67bf5","ts":1737020000000},
+    {"type":"pong","requestId":"2f663e57-13de-4f61-81db-cfa90ef67bf5","ts":1737020000123}
+  ],
+  "invalid": [
+    {"name":"missing timestamp","schema":"press","keyword":"required","path":[],"message":{"type":"press","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1"}},
+    {"name":"arbitrary command","schema":"press","keyword":"additionalProperties","path":[],"message":{"type":"press","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ts":1,"command":"untrusted"}},
+    {"name":"bad UUID","schema":"press","keyword":"pattern","path":["requestId"],"message":{"type":"press","requestId":"not-a-uuid","buttonId":"btn_1","ts":1}},
+    {"name":"empty button ID","schema":"press","keyword":"minLength","path":["buttonId"],"message":{"type":"press","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"","ts":1}},
+    {"name":"newline button ID","schema":"press","keyword":"pattern","path":["buttonId"],"message":{"type":"press","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1\n","ts":1}},
+    {"name":"string timestamp","schema":"ping","keyword":"type","path":["ts"],"message":{"type":"ping","requestId":"2f663e57-13de-4f61-81db-cfa90ef67bf5","ts":"1737020000000"}},
+    {"name":"negative timestamp","schema":"pong","keyword":"minimum","path":["ts"],"message":{"type":"pong","requestId":"2f663e57-13de-4f61-81db-cfa90ef67bf5","ts":-1}},
+    {"name":"fraction timestamp","schema":"ping","keyword":"type","path":["ts"],"message":{"type":"ping","requestId":"2f663e57-13de-4f61-81db-cfa90ef67bf5","ts":1.5}},
+    {"name":"boolean timestamp","schema":"ping","keyword":"type","path":["ts"],"message":{"type":"ping","requestId":"2f663e57-13de-4f61-81db-cfa90ef67bf5","ts":true}},
+    {"name":"unsafe timestamp","schema":"pong","keyword":"maximum","path":["ts"],"message":{"type":"pong","requestId":"2f663e57-13de-4f61-81db-cfa90ef67bf5","ts":9007199254740992}},
+    {"name":"false ack without error","schema":"ack","keyword":"oneOf","path":[],"message":{"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":false,"error":null}},
+    {"name":"true ack with error","schema":"ack","keyword":"oneOf","path":[],"message":{"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":true,"error":{"code":"action_failed","message":"Action failed"}}},
+    {"name":"auth error is not an ack","schema":"ack","keyword":"enum","path":["error"],"message":{"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":false,"error":{"code":"invalid_token","message":"Invalid token"}}},
+    {"name":"exception leak","schema":"ack","keyword":"enum","path":["error"],"message":{"type":"ack","requestId":"550e8400-e29b-41d4-a716-446655440000","buttonId":"btn_1","ok":false,"error":{"code":"action_failed","message":"private executable path"}}},
+    {"name":"new protocol","schema":"config","keyword":"const","path":["protocolVersion"],"message":{"type":"config","protocolVersion":2,"revision":1,"buttons":[]}},
+    {"name":"executable config leak","schema":"config","keyword":"additionalProperties","path":["buttons",0],"message":{"type":"config","protocolVersion":1,"revision":1,"buttons":[{"id":"btn_1","label":"Music","path":"private"}]}},
+    {"name":"URL icon","schema":"config","keyword":"pattern","path":["buttons",0,"icon"],"message":{"type":"config","protocolVersion":1,"revision":1,"buttons":[{"id":"btn_1","label":"Music","icon":"https://example.com/image"}]}},
+    {"name":"unknown type","keyword":"oneOf","path":[],"message":{"type":"execute","command":"untrusted"}},
+    {"name":"array root","keyword":"oneOf","path":[],"message":[]},
+    {"name":"null root","keyword":"oneOf","path":[],"message":null}
+  ],
+  "invalidSemantic": [
+    {"name":"duplicate button IDs","message":{"type":"config","protocolVersion":1,"revision":1,"buttons":[{"id":"same","label":"One"},{"id":"same","label":"Two"}]}}
+  ],
+  "invalidJson": ["{", "{}\n{}", "{\"ts\":NaN}", "{\"ts\":Infinity}"]
+}
