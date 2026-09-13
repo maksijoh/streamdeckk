@@ -1,5 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, FlatList, Linking, Pressable, StatusBar, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  AppState,
+  Linking,
+  StatusBar,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { randomUUID } from 'expo-crypto';
@@ -7,30 +16,56 @@ import Feather from '@expo/vector-icons/Feather';
 import { DeckClient, type ClientState } from './src/client';
 import { parseQr, type Pairing } from './src/protocol';
 import { clearToken, loadPairing, savePairing } from './src/storage';
+import {
+  DEFAULT_APPEARANCE,
+  type AppearancePreferences,
+  loadAppearance,
+  paletteFor,
+  saveAppearance,
+  withAlpha,
+} from './src/appearance';
+import { AppearanceSettings } from './src/components/AppearanceSettings';
+import { DeckGrid } from './src/components/DeckGrid';
+import { GlassControl, GlassSurface } from './src/components/GlassSurface';
 
-const color = { background: '#10141e', panel: '#1d2636', text: '#f4f7ff', muted: '#b6c2d8', accent: '#83e0bf', error: '#ffb4a9' };
-
-function Control({ title, onPress, disabled = false }: { title: string; onPress: () => void; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.control, pressed && styles.pressed, disabled && styles.disabled]}>
-    <Text style={styles.controlText}>{title}</Text>
-  </Pressable>;
+function AmbientBackground({ appearance }: { appearance: AppearancePreferences }) {
+  const palette = paletteFor(appearance);
+  const dark = palette.theme === 'dark';
+  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View style={[styles.ambientTop, { backgroundColor: withAlpha(palette.accent, dark ? 0.12 : 0.14) }]} />
+    <View style={[styles.ambientSide, { backgroundColor: withAlpha(palette.buttonHighlight, dark ? 0.07 : 0.18) }]} />
+    <View style={[styles.ambientBottom, { backgroundColor: withAlpha(palette.glass, dark ? 0.18 : 0.34) }]} />
+  </View>;
 }
 
 function DeckRemote() {
   const [state, setState] = useState<ClientState>({ status: 'disconnected', buttons: [], notice: '', pending: 0 });
   const [pairing, setPairing] = useState<Pairing | null>(null);
-  const [ready, setReady] = useState(false);
+  const [connectionReady, setConnectionReady] = useState(false);
+  const [appearanceReady, setAppearanceReady] = useState(false);
+  const [appearance, setAppearance] = useState<AppearancePreferences>(DEFAULT_APPEARANCE);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [appearanceError, setAppearanceError] = useState('');
   const [active, setActive] = useState(AppState.currentState === 'active');
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const client = useRef<DeckClient | null>(null);
   const scanLock = useRef(false);
   const mounted = useRef(false);
-  const { width } = useWindowDimensions();
-  const columns = Math.max(2, Math.min(5, Math.floor((width - 32) / 145)));
+  const { width, height } = useWindowDimensions();
+  const palette = useMemo(() => paletteFor(appearance), [appearance]);
+  const ready = connectionReady && appearanceReady;
+
+  useEffect(() => {
+    let alive = true;
+    void loadAppearance()
+      .then(saved => { if (alive) setAppearance(saved); })
+      .catch(() => { if (alive) setAppearanceError('Appearance could not be restored. Theme defaults are active.'); })
+      .finally(() => { if (alive) setAppearanceReady(true); });
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -50,7 +85,7 @@ function DeckRemote() {
       else setScanning(true);
     }).catch(() => {
       if (alive) { setError('Could not restore pairing. Scan a new QR from the PC.'); setScanning(true); }
-    }).finally(() => { if (alive) setReady(true); });
+    }).finally(() => { if (alive) setConnectionReady(true); });
     const subscription = AppState.addEventListener('change', value => {
       const foreground = value === 'active';
       setActive(foreground);
@@ -79,71 +114,173 @@ function DeckRemote() {
     finally { if (mounted.current) setBusy(false); }
   }
 
+  const updateAppearance = (next: AppearancePreferences) => {
+    setAppearance(next);
+    setAppearanceError('');
+    void saveAppearance(next).catch(() => {
+      if (mounted.current) setAppearanceError('Appearance changed, but could not be saved on this device.');
+    });
+  };
   const retryScan = () => { scanLock.current = false; setError(''); };
   const scanNew = () => { client.current?.disconnect(); retryScan(); setScanning(true); };
+  const pressButton = useCallback((buttonId: string) => client.current?.press(buttonId), []);
   const connected = state.status === 'connected' && !scanning && active;
-  if (!ready) return <View style={styles.center}><ActivityIndicator color={color.accent} /><Text style={styles.body}>Restoring pairing…</Text></View>;
+  const status = scanning ? 'Pair a computer' : state.status === 'connected' ? 'Connected' : state.status === 'connecting' ? 'Connecting' : state.status === 'error' ? 'Needs attention' : 'Disconnected';
+  const statusColor = scanning || state.status === 'connecting' ? palette.buttonHighlight : state.status === 'connected' ? palette.success : state.status === 'error' ? palette.danger : palette.muted;
 
-  return <SafeAreaView style={styles.screen}>
-    <StatusBar barStyle="light-content" />
-    <View style={styles.header}><Text style={styles.title}>DeckRemote</Text><Text style={styles.body}>Your PC, within reach.</Text></View>
-    <View style={styles.banner} accessibilityLiveRegion="polite">
-      <Text style={styles.bannerText}>{scanning ? 'Pair with your PC' : state.status === 'connected' ? 'Connected' : state.status === 'connecting' ? 'Connecting…' : state.status === 'error' ? 'Connection needs attention' : 'Disconnected / waiting to reconnect'}</Text>
-      {pairing && !scanning && <Text style={styles.body}>{pairing.endpoint}</Text>}
-      {!!state.notice && <Text style={styles.body}>{state.notice}</Text>}
-      {state.pending > 0 && <Text style={styles.body}>{state.pending} awaiting confirmation</Text>}
+  if (!ready) return <View style={[styles.center, { backgroundColor: palette.background }]}>
+    <AmbientBackground appearance={appearance} />
+    <ActivityIndicator color={palette.accent} />
+    <Text style={[styles.body, { color: palette.muted }]}>Restoring your deck…</Text>
+  </View>;
+
+  return <SafeAreaView style={[styles.screen, { backgroundColor: palette.background }]}>
+    <StatusBar barStyle={palette.theme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+    <AmbientBackground appearance={appearance} />
+
+    <View style={styles.header}>
+      <View style={styles.identity}>
+        <Text style={[styles.eyebrow, { color: palette.accent }]}>DECKREMOTE</Text>
+        <Text style={[styles.title, { color: palette.text }]}>Liquid Deck</Text>
+      </View>
+      <GlassControl palette={palette} title="Appearance settings" icon="sliders" compact onPress={() => setSettingsOpen(true)} />
     </View>
-    {!!error && <View style={styles.banner} accessibilityLiveRegion="assertive"><Text style={styles.error}>{error}</Text></View>}
+
+    <GlassSurface palette={palette} variant="subtle" style={styles.statusPanel}>
+      <View style={styles.statusLine} accessibilityLiveRegion="polite">
+        <View style={[styles.statusDotOuter, { borderColor: withAlpha(statusColor, 0.28) }]}>
+          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+        </View>
+        <View style={styles.statusCopy}>
+          <Text style={[styles.statusTitle, { color: palette.text }]}>{status}</Text>
+          <Text numberOfLines={1} style={[styles.statusDetail, { color: palette.muted }]}>
+            {scanning ? 'Scan the secure pairing code from the PC' : pairing?.endpoint ?? 'No computer paired'}
+          </Text>
+        </View>
+        {state.pending > 0 && <View style={[styles.pendingBadge, { backgroundColor: withAlpha(palette.accent, 0.16) }]}>
+          <Text style={[styles.pendingText, { color: palette.accent }]}>{state.pending}</Text>
+        </View>}
+      </View>
+      {!scanning && !!state.notice && <Text accessibilityLiveRegion="polite" style={[styles.notice, { color: palette.muted }]}>{state.notice}</Text>}
+    </GlassSurface>
+
+    {(!!error || !!appearanceError) && <GlassSurface palette={palette} style={[styles.errorPanel, { borderColor: withAlpha(palette.danger, 0.38) }]}>
+      <Feather name="alert-circle" size={16} color={palette.danger} />
+      <Text accessibilityLiveRegion="assertive" style={[styles.errorText, { color: palette.danger }]}>{error || appearanceError}</Text>
+    </GlassSurface>}
+
     {scanning ? <View style={styles.scannerArea}>
-      <Text style={styles.body}>Open “Show QR” in DeckRemote on your PC. Keep both devices on the same trusted Wi-Fi.</Text>
-      {!permission ? <ActivityIndicator color={color.accent} /> : !permission.granted ? <View style={styles.actions}>
-        <Text style={styles.body}>Camera access is needed to scan the PC’s pairing QR.</Text>
-        <Control title={permission.canAskAgain ? 'Allow camera' : 'Open camera settings'} onPress={() => {
-          void (permission.canAskAgain ? requestPermission() : Linking.openSettings()).catch(() => setError('Could not open camera permissions. Enable Camera in phone settings.'));
-        }} />
-      </View> : !error && active && !busy ? <CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={({ data }) => { void scanned(data); }} onMountError={() => setError('Camera could not start. Close other camera apps and try again.')} /> : null}
-      {busy && <ActivityIndicator color={color.accent} />}
-      {!!error && <Control title="Scan again" onPress={retryScan} disabled={busy} />}
-      {pairing && <Control title="Back to deck" disabled={busy} onPress={() => { setScanning(false); setError(''); client.current?.connect(pairing); }} />}
+      <GlassSurface palette={palette} variant="floating" style={styles.scannerPanel}>
+        <View style={styles.scannerCopy}>
+          <Text style={[styles.scannerTitle, { color: palette.text }]}>Scan pairing code</Text>
+          <Text style={[styles.body, { color: palette.muted }]}>Open “Show QR” on the PC. Keep both devices on the same trusted Wi-Fi.</Text>
+        </View>
+
+        {!permission ? <ActivityIndicator color={palette.accent} /> : !permission.granted ? <View style={styles.permissionState}>
+          <View style={[styles.permissionIcon, { backgroundColor: withAlpha(palette.accent, 0.12) }]}><Feather name="camera" size={25} color={palette.accent} /></View>
+          <Text style={[styles.body, { color: palette.muted }]}>Camera access is used only to read the PC pairing QR.</Text>
+          <GlassControl palette={palette} title={permission.canAskAgain ? 'Allow camera' : 'Open camera settings'} icon="camera" onPress={() => {
+            void (permission.canAskAgain ? requestPermission() : Linking.openSettings()).catch(() => setError('Could not open camera permissions. Enable Camera in phone settings.'));
+          }} />
+        </View> : !error && active && !busy && !settingsOpen ? <View style={[styles.cameraShell, { borderColor: withAlpha(palette.buttonHighlight, 0.55) }]}>
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={({ data }) => { void scanned(data); }}
+            onMountError={() => setError('Camera could not start. Close other camera apps and try again.')}
+          />
+          <View pointerEvents="none" style={styles.scanFrame}>
+            {['topLeft', 'topRight', 'bottomLeft', 'bottomRight'].map(position => <View key={position} style={[
+              styles.scanCorner,
+              position.includes('top') ? styles.cornerTop : styles.cornerBottom,
+              position.includes('Left') ? styles.cornerLeft : styles.cornerRight,
+              { borderColor: palette.buttonHighlight },
+            ]} />)}
+          </View>
+        </View> : null}
+
+        {busy && <ActivityIndicator color={palette.accent} />}
+        <View style={styles.scannerActions}>
+          {!!error && <GlassControl palette={palette} title="Scan again" icon="refresh-cw" onPress={retryScan} disabled={busy} />}
+          {pairing && <GlassControl palette={palette} title="Back to deck" icon="grid" disabled={busy} onPress={() => { setScanning(false); setError(''); client.current?.connect(pairing); }} />}
+        </View>
+      </GlassSurface>
     </View> : <>
-      <FlatList key={columns} numColumns={columns} data={state.buttons} keyExtractor={button => button.id}
-        contentContainerStyle={styles.grid} columnWrapperStyle={styles.row}
-        ListEmptyComponent={<Text style={styles.body}>{connected ? 'No buttons yet. Add them in the PC configuration.' : 'Waiting for the PC’s deck…'}</Text>}
-        renderItem={({ item }) => {
-          const icon = item.icon && Object.hasOwn(Feather.glyphMap, item.icon) ? item.icon as keyof typeof Feather.glyphMap : 'grid';
-          return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ disabled: !connected }}
-            disabled={!connected} onPress={() => client.current?.press(item.id)}
-            style={({ pressed }) => [styles.tile, { width: (width - 32 - (columns - 1) * 12) / columns }, pressed && styles.pressed, !connected && styles.disabled]}>
-            <Feather name={icon} size={30} color={color.accent} /><Text style={styles.label}>{item.label}</Text>
-          </Pressable>;
-        }} />
+      <View style={styles.deckArea}>
+        <DeckGrid
+          buttons={state.buttons}
+          connected={connected}
+          palette={palette}
+          viewportWidth={width}
+          viewportHeight={height}
+          onPress={pressButton}
+        />
+        {state.buttons.length === 0 && <Text style={[styles.emptyMessage, { color: palette.muted }]}>
+          {connected ? 'Add buttons in the PC configuration.' : 'Waiting for the PC deck…'}
+        </Text>}
+      </View>
+
       <View style={styles.footer}>
-        <Control title="Scan new PC" onPress={scanNew} />
-        {pairing && <Control title={state.status === 'connected' || state.status === 'connecting' ? 'Disconnect' : 'Retry'} onPress={() => {
+        <GlassControl palette={palette} title="Pair new PC" icon="camera" onPress={scanNew} />
+        {pairing && <GlassControl palette={palette} title={state.status === 'connected' || state.status === 'connecting' ? 'Disconnect' : 'Retry'} icon={state.status === 'connected' || state.status === 'connecting' ? 'wifi-off' : 'refresh-cw'} onPress={() => {
           if (state.status === 'connected' || state.status === 'connecting') client.current?.disconnect();
           else client.current?.connect(pairing);
         }} />}
       </View>
     </>}
+
+    <AppearanceSettings
+      visible={settingsOpen}
+      preferences={appearance}
+      palette={palette}
+      onChange={updateAppearance}
+      onClose={() => setSettingsOpen(false)}
+    />
   </SafeAreaView>;
 }
 
 export default function App() { return <SafeAreaProvider><DeckRemote /></SafeAreaProvider>; }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: color.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16, backgroundColor: color.background },
-  header: { padding: 16, gap: 4 }, title: { fontSize: 30, fontWeight: '700', color: color.text },
-  body: { color: color.muted, fontSize: 15, lineHeight: 22 },
-  banner: { padding: 12, marginHorizontal: 16, marginBottom: 12, borderRadius: 12, backgroundColor: color.panel, gap: 4 },
-  bannerText: { color: color.accent, fontSize: 16, fontWeight: '600' }, error: { color: color.error, fontSize: 15, lineHeight: 22 },
-  scannerArea: { flex: 1, padding: 16, gap: 16 }, camera: { flex: 1, minHeight: 120, borderRadius: 16, overflow: 'hidden' },
-  actions: { gap: 16 }, control: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 12, justifyContent: 'center', alignItems: 'center', borderRadius: 12, backgroundColor: color.panel },
-  controlText: { color: color.text, fontSize: 16, fontWeight: '600' },
-  grid: { padding: 16, gap: 12 }, row: { gap: 12 },
-  tile: { minHeight: 136, padding: 12, gap: 12, justifyContent: 'center', alignItems: 'center', borderRadius: 18, backgroundColor: color.panel },
-  label: { color: color.text, fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  pressed: { opacity: 0.6, transform: [{ scale: 0.97 }] }, disabled: { opacity: 0.45 },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, gap: 12 },
+  screen: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
+  ambientTop: { position: 'absolute', width: 280, height: 280, borderRadius: 140, top: -150, right: -80 },
+  ambientSide: { position: 'absolute', width: 230, height: 230, borderRadius: 115, top: '38%', left: -170 },
+  ambientBottom: { position: 'absolute', width: 330, height: 210, borderRadius: 165, bottom: -145, right: -90 },
+  header: { minHeight: 72, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  identity: { gap: 0 },
+  eyebrow: { fontSize: 9, fontWeight: '900', letterSpacing: 2.2 },
+  title: { fontSize: 27, lineHeight: 31, fontWeight: '800', letterSpacing: -0.9 },
+  body: { fontSize: 14, lineHeight: 20 },
+  statusPanel: { marginHorizontal: 16, paddingHorizontal: 13, paddingVertical: 10 },
+  statusLine: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  statusDotOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 5, alignItems: 'center', justifyContent: 'center' },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusCopy: { flex: 1 },
+  statusTitle: { fontSize: 13, fontWeight: '800' },
+  statusDetail: { fontSize: 10.5, marginTop: 1 },
+  pendingBadge: { minWidth: 25, height: 25, borderRadius: 13, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
+  pendingText: { fontSize: 11, fontWeight: '900' },
+  notice: { fontSize: 10.5, marginLeft: 30, marginTop: 4 },
+  errorPanel: { marginHorizontal: 16, marginTop: 8, minHeight: 40, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  errorText: { flex: 1, fontSize: 12, lineHeight: 16, fontWeight: '600' },
+  deckArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
+  emptyMessage: { position: 'absolute', bottom: 0, fontSize: 11 },
+  footer: { minHeight: 66, flexDirection: 'row', justifyContent: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
+  scannerArea: { flex: 1, padding: 16, paddingTop: 12 },
+  scannerPanel: { flex: 1, padding: 14, gap: 14 },
+  scannerCopy: { gap: 4 },
+  scannerTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
+  cameraShell: { flex: 1, minHeight: 180, borderRadius: 20, overflow: 'hidden', borderWidth: 1 },
+  camera: { flex: 1 },
+  scanFrame: { position: 'absolute', top: 28, right: 28, bottom: 28, left: 28 },
+  scanCorner: { position: 'absolute', width: 30, height: 30 },
+  cornerTop: { top: 0, borderTopWidth: 3 },
+  cornerBottom: { bottom: 0, borderBottomWidth: 3 },
+  cornerLeft: { left: 0, borderLeftWidth: 3 },
+  cornerRight: { right: 0, borderRightWidth: 3 },
+  permissionState: { flex: 1, minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 20 },
+  permissionIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  scannerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 },
 });
