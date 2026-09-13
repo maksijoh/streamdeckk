@@ -12,6 +12,8 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { randomUUID } from 'expo-crypto';
+import { BlurTargetView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import Feather from '@expo/vector-icons/Feather';
 import { DeckClient, type ClientState } from './src/client';
 import { parseQr, type Pairing } from './src/protocol';
@@ -26,16 +28,27 @@ import {
 } from './src/appearance';
 import { AppearanceSettings } from './src/components/AppearanceSettings';
 import { DeckGrid } from './src/components/DeckGrid';
-import { GlassControl, GlassSurface } from './src/components/GlassSurface';
+import { GlassBlurProvider, GlassControl, GlassSurface } from './src/components/GlassSurface';
 
 function AmbientBackground({ appearance }: { appearance: AppearancePreferences }) {
   const palette = paletteFor(appearance);
   const dark = palette.theme === 'dark';
-  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+  return <LinearGradient
+    pointerEvents="none"
+    colors={[
+      palette.background,
+      withAlpha(palette.accent, dark ? 0.16 : 0.22),
+      palette.background,
+    ]}
+    locations={[0, 0.48, 1]}
+    start={{ x: 0.08, y: 0 }}
+    end={{ x: 0.9, y: 1 }}
+    style={StyleSheet.absoluteFill}
+  >
     <View style={[styles.ambientTop, { backgroundColor: withAlpha(palette.accent, dark ? 0.12 : 0.14) }]} />
     <View style={[styles.ambientSide, { backgroundColor: withAlpha(palette.buttonHighlight, dark ? 0.07 : 0.18) }]} />
     <View style={[styles.ambientBottom, { backgroundColor: withAlpha(palette.glass, dark ? 0.18 : 0.34) }]} />
-  </View>;
+  </LinearGradient>;
 }
 
 function DeckRemote() {
@@ -54,6 +67,8 @@ function DeckRemote() {
   const client = useRef<DeckClient | null>(null);
   const scanLock = useRef(false);
   const mounted = useRef(false);
+  const ambientBlurTarget = useRef<View | null>(null);
+  const sceneBlurTarget = useRef<View | null>(null);
   const { width, height } = useWindowDimensions();
   const palette = useMemo(() => paletteFor(appearance), [appearance]);
   const ready = connectionReady && appearanceReady;
@@ -134,9 +149,19 @@ function DeckRemote() {
     <Text style={[styles.body, { color: palette.muted }]}>Restoring your deck…</Text>
   </View>;
 
-  return <SafeAreaView style={[styles.screen, { backgroundColor: palette.background }]}>
+  return <View style={[styles.screen, { backgroundColor: palette.background }]}>
     <StatusBar barStyle={palette.theme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-    <AmbientBackground appearance={appearance} />
+    <BlurTargetView
+      ref={sceneBlurTarget}
+      style={styles.scene}
+      accessibilityElementsHidden={settingsOpen}
+      importantForAccessibility={settingsOpen ? 'no-hide-descendants' : 'auto'}
+    >
+      <SafeAreaView style={styles.safeArea}>
+        <BlurTargetView ref={ambientBlurTarget} style={StyleSheet.absoluteFill}>
+          <AmbientBackground appearance={appearance} />
+        </BlurTargetView>
+        <GlassBlurProvider target={ambientBlurTarget}>
 
     <View style={styles.header}>
       <View style={styles.identity}>
@@ -230,20 +255,27 @@ function DeckRemote() {
       </View>
     </>}
 
-    <AppearanceSettings
-      visible={settingsOpen}
-      preferences={appearance}
-      palette={palette}
-      onChange={updateAppearance}
-      onClose={() => setSettingsOpen(false)}
-    />
-  </SafeAreaView>;
+        </GlassBlurProvider>
+      </SafeAreaView>
+    </BlurTargetView>
+
+    {settingsOpen && <GlassBlurProvider target={sceneBlurTarget}>
+      <AppearanceSettings
+        preferences={appearance}
+        palette={palette}
+        onChange={updateAppearance}
+        onClose={() => setSettingsOpen(false)}
+      />
+    </GlassBlurProvider>}
+  </View>;
 }
 
 export default function App() { return <SafeAreaProvider><DeckRemote /></SafeAreaProvider>; }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  scene: { flex: 1 },
+  safeArea: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   ambientTop: { position: 'absolute', width: 280, height: 280, borderRadius: 140, top: -150, right: -80 },
   ambientSide: { position: 'absolute', width: 230, height: 230, borderRadius: 115, top: '38%', left: -170 },

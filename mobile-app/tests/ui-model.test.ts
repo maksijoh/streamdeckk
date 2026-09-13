@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DEFAULT_APPEARANCE, normalizeHex, paletteFor, parseAppearance } from '../src/appearance.ts';
 import { DECK_COLUMNS, DECK_ROWS, DECK_SLOTS_PER_PAGE, paginateDeck } from '../src/deckLayout.ts';
+import { clampSheetHeight, compactSheetHeight, shouldExpandSheet } from '../src/sheetMotion.ts';
 
 const buttons = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `button_${index}`, label: `Button ${index}` }));
 
@@ -44,4 +45,19 @@ test('custom hex normalization supports shorthand and rejects unsafe values', ()
   assert.equal(normalizeHex('#7bf'), '#77BBFF');
   assert.equal(normalizeHex(' #12abEF '), '#12ABEF');
   for (const value of ['', '#12', '#1234', '12ABEF', '#GG0000', '#12345678']) assert.equal(normalizeHex(value), null);
+});
+
+test('appearance sheet keeps useful compact and full-screen detents', () => {
+  assert.equal(compactSheetHeight(800), 576);
+  assert.equal(compactSheetHeight(500), 470);
+  assert.equal(compactSheetHeight(420), 420);
+  assert.equal(clampSheetHeight(300, 470, 700), 470);
+  assert.equal(clampSheetHeight(900, 470, 700), 700);
+});
+
+test('appearance sheet settles by drag midpoint or fling direction', () => {
+  assert.equal(shouldExpandSheet(590, 0, 470, 700), true);
+  assert.equal(shouldExpandSheet(580, 0, 470, 700), false);
+  assert.equal(shouldExpandSheet(480, -0.5, 470, 700), true);
+  assert.equal(shouldExpandSheet(690, 0.5, 470, 700), false);
 });

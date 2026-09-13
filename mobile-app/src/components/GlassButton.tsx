@@ -1,8 +1,13 @@
 import { memo, useState } from 'react';
-import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { type AppearancePalette, withAlpha } from '../appearance';
 import type { VisualButton } from '../deckLayout';
+import { useGlassBlurTarget } from './GlassSurface';
+
+const nativeBlurMethod = Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' as const : undefined;
 
 type Props = {
   button: VisualButton | null;
@@ -18,6 +23,7 @@ function validImageUri(value: string | undefined): string | undefined {
 }
 
 function GlassButtonComponent({ button, connected, palette, size, onPress }: Props) {
+  const blurTarget = useGlassBlurTarget();
   const [pressDepth] = useState(() => new Animated.Value(0));
   const [pressed, setPressed] = useState(false);
   const [failedImageUri, setFailedImageUri] = useState<string | undefined>();
@@ -71,12 +77,33 @@ function GlassButtonComponent({ button, connected, palette, size, onPress }: Pro
         styles.key,
         {
           borderColor: withAlpha(palette.buttonHighlight, button ? (dark ? 0.46 : 0.88) : (dark ? 0.14 : 0.38)),
-          backgroundColor: withAlpha(palette.glass, button ? (dark ? 0.62 : 0.72) : (dark ? 0.18 : 0.3)),
+          backgroundColor: withAlpha(palette.glass, button ? (dark ? 0.28 : 0.36) : (dark ? 0.1 : 0.2)),
         },
         !button && styles.empty,
         button && !connected && styles.disabled,
       ]}
     >
+      <BlurView
+        pointerEvents="none"
+        tint={dark ? 'dark' : 'light'}
+        intensity={button ? 38 : 22}
+        blurMethod={blurTarget ? nativeBlurMethod : undefined}
+        blurTarget={blurTarget}
+        blurReductionFactor={2.5}
+        style={StyleSheet.absoluteFill}
+      />
+      <LinearGradient
+        pointerEvents="none"
+        colors={[
+          withAlpha(palette.buttonHighlight, button ? (dark ? 0.2 : 0.42) : 0.08),
+          withAlpha(palette.glass, dark ? 0.05 : 0.1),
+          withAlpha(palette.accent, button ? (dark ? 0.07 : 0.045) : 0.02),
+        ]}
+        locations={[0, 0.46, 1]}
+        start={{ x: 0.08, y: 0 }}
+        end={{ x: 0.92, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
       {imageUri ? <Image source={{ uri: imageUri }} resizeMode="contain" style={styles.image} onError={() => setFailedImageUri(imageUri)} /> : button ? <>
         <View style={[styles.iconHalo, { backgroundColor: withAlpha(palette.accent, dark ? 0.12 : 0.09) }]}>
           <Feather name={icon} size={Math.max(21, Math.min(31, size * 0.31))} color={palette.accent} />
@@ -87,6 +114,19 @@ function GlassButtonComponent({ button, connected, palette, size, onPress }: Pro
       {imageUri && <View style={[styles.imageLabel, { backgroundColor: withAlpha(dark ? '#050910' : '#FFFFFF', 0.68) }]}>
         <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.label, { color: palette.text, fontSize: Math.max(10, Math.min(13, size * 0.14)) }]}>{button?.label}</Text>
       </View>}
+
+      <LinearGradient
+        pointerEvents="none"
+        colors={[
+          withAlpha('#FFFFFF', dark ? 0.12 : 0.26),
+          'transparent',
+          withAlpha(palette.buttonHighlight, dark ? 0.045 : 0.08),
+        ]}
+        locations={[0, 0.34, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0.86 }}
+        style={StyleSheet.absoluteFill}
+      />
 
       <Animated.View pointerEvents="none" style={[
         styles.topHighlight,
