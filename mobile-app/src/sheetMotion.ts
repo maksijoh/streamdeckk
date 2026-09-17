@@ -1,6 +1,9 @@
 export const SHEET_FLING_VELOCITY = 0.42;
 
 export function compactSheetHeight(availableHeight: number): number {
+  if (availableHeight < 470) {
+    return Math.min(availableHeight, Math.max(240, Math.round(availableHeight * 0.72)));
+  }
   return Math.min(availableHeight, Math.max(470, Math.round(availableHeight * 0.72)));
 }
 

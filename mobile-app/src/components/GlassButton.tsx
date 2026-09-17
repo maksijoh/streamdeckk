@@ -1,13 +1,10 @@
 import { memo, useState } from 'react';
-import { Animated, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type AppearancePalette, withAlpha } from '../appearance';
 import type { VisualButton } from '../deckLayout';
-import { useGlassBlurTarget } from './GlassSurface';
-
-const nativeBlurMethod = Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' as const : undefined;
+import { GlassMaterial, nativeLiquidGlassAvailable } from './GlassSurface';
 
 type Props = {
   button: VisualButton | null;
@@ -23,7 +20,6 @@ function validImageUri(value: string | undefined): string | undefined {
 }
 
 function GlassButtonComponent({ button, connected, palette, size, onPress }: Props) {
-  const blurTarget = useGlassBlurTarget();
   const [pressDepth] = useState(() => new Animated.Value(0));
   const [pressed, setPressed] = useState(false);
   const [failedImageUri, setFailedImageUri] = useState<string | undefined>();
@@ -76,23 +72,23 @@ function GlassButtonComponent({ button, connected, palette, size, onPress }: Pro
       style={[
         styles.key,
         {
-          borderColor: withAlpha(palette.buttonHighlight, button ? (dark ? 0.46 : 0.88) : (dark ? 0.14 : 0.38)),
-          backgroundColor: withAlpha(palette.glass, button ? (dark ? 0.28 : 0.36) : (dark ? 0.1 : 0.2)),
+          borderColor: nativeLiquidGlassAvailable ? 'transparent' : withAlpha(palette.buttonHighlight, button ? (dark ? 0.46 : 0.88) : (dark ? 0.14 : 0.38)),
+          backgroundColor: nativeLiquidGlassAvailable ? 'transparent' : withAlpha(palette.glass, button ? (dark ? 0.08 : 0.12) : (dark ? 0.04 : 0.08)),
         },
         !button && styles.empty,
         button && !connected && styles.disabled,
       ]}
     >
-      <BlurView
-        pointerEvents="none"
-        tint={dark ? 'dark' : 'light'}
-        intensity={button ? 38 : 22}
-        blurMethod={blurTarget ? nativeBlurMethod : undefined}
-        blurTarget={blurTarget}
-        blurReductionFactor={2.5}
-        style={StyleSheet.absoluteFill}
+      {imageUri && <Image source={{ uri: imageUri }} resizeMode="cover" style={styles.image} onError={() => setFailedImageUri(imageUri)} />}
+      <GlassMaterial
+        palette={palette}
+        intensity={button ? 44 : 24}
+        effectStyle={button ? 'regular' : 'clear'}
+        interactive={!!button}
+        fallbackTint={button ? (dark ? 0.28 : 0.36) : (dark ? 0.1 : 0.2)}
+        borderRadius={19}
       />
-      <LinearGradient
+      {!nativeLiquidGlassAvailable && <LinearGradient
         pointerEvents="none"
         colors={[
           withAlpha(palette.buttonHighlight, button ? (dark ? 0.2 : 0.42) : 0.08),
@@ -103,19 +99,19 @@ function GlassButtonComponent({ button, connected, palette, size, onPress }: Pro
         start={{ x: 0.08, y: 0 }}
         end={{ x: 0.92, y: 1 }}
         style={StyleSheet.absoluteFill}
-      />
-      {imageUri ? <Image source={{ uri: imageUri }} resizeMode="contain" style={styles.image} onError={() => setFailedImageUri(imageUri)} /> : button ? <>
+      />}
+      {!imageUri && button ? <>
         <View style={[styles.iconHalo, { backgroundColor: withAlpha(palette.accent, dark ? 0.12 : 0.09) }]}>
           <Feather name={icon} size={Math.max(21, Math.min(31, size * 0.31))} color={palette.accent} />
         </View>
         <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.78} style={[styles.label, { color: palette.text, fontSize: Math.max(10, Math.min(13, size * 0.14)) }]}>{button.label}</Text>
-      </> : <View style={[styles.emptyMark, { backgroundColor: withAlpha(palette.buttonHighlight, dark ? 0.12 : 0.3) }]} />}
+      </> : !imageUri && <View style={[styles.emptyMark, { backgroundColor: withAlpha(palette.buttonHighlight, dark ? 0.12 : 0.3) }]} />}
 
       {imageUri && <View style={[styles.imageLabel, { backgroundColor: withAlpha(dark ? '#050910' : '#FFFFFF', 0.68) }]}>
         <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.label, { color: palette.text, fontSize: Math.max(10, Math.min(13, size * 0.14)) }]}>{button?.label}</Text>
       </View>}
 
-      <LinearGradient
+      {!nativeLiquidGlassAvailable && <LinearGradient
         pointerEvents="none"
         colors={[
           withAlpha('#FFFFFF', dark ? 0.12 : 0.26),
@@ -126,16 +122,17 @@ function GlassButtonComponent({ button, connected, palette, size, onPress }: Pro
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0.86 }}
         style={StyleSheet.absoluteFill}
-      />
+      />}
 
-      <Animated.View pointerEvents="none" style={[
+      {!nativeLiquidGlassAvailable && <Animated.View pointerEvents="none" style={[
         styles.topHighlight,
         {
           backgroundColor: withAlpha(palette.buttonHighlight, dark ? 0.3 : 0.62),
           opacity: pressDepth.interpolate({ inputRange: [0, 1], outputRange: [1, 0.2] }),
         },
-      ]} />
-      <View pointerEvents="none" style={[styles.sideReflection, { borderColor: withAlpha('#FFFFFF', dark ? 0.1 : 0.48) }]} />
+      ]} />}
+      {!nativeLiquidGlassAvailable && <View pointerEvents="none" style={[styles.sideReflection, { borderColor: withAlpha('#FFFFFF', dark ? 0.1 : 0.48) }]} />}
+      {button && !connected && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(palette.background, 0.48) }]} />}
       <Animated.View pointerEvents="none" style={[
         StyleSheet.absoluteFill,
         styles.recess,
@@ -164,7 +161,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   empty: { borderStyle: 'solid' },
-  disabled: { opacity: 0.48 },
+  disabled: { shadowOpacity: 0.02 },
   image: { position: 'absolute', top: 5, right: 5, bottom: 5, left: 5, borderRadius: 14 },
   iconHalo: { width: '57%', aspectRatio: 1, maxWidth: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   label: { fontWeight: '700', lineHeight: 16, textAlign: 'center', letterSpacing: -0.15 },

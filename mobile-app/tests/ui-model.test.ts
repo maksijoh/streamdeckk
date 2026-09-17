@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DEFAULT_APPEARANCE, normalizeHex, paletteFor, parseAppearance } from '../src/appearance.ts';
-import { DECK_COLUMNS, DECK_ROWS, DECK_SLOTS_PER_PAGE, paginateDeck } from '../src/deckLayout.ts';
+import { DECK_COLUMNS, DECK_ROWS, DECK_SLOTS_PER_PAGE, deckKeySize, paginateDeck } from '../src/deckLayout.ts';
 import { clampSheetHeight, compactSheetHeight, shouldExpandSheet } from '../src/sheetMotion.ts';
 
 const buttons = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `button_${index}`, label: `Button ${index}` }));
@@ -23,6 +23,14 @@ test('deck pages preserve server ordering and pad only their tail', () => {
   assert.deepEqual(pages[0].map(button => button?.id), buttons(12).map(button => button.id));
   assert.deepEqual(pages[1].slice(0, 2).map(button => button?.id), ['button_12', 'button_13']);
   assert.ok(pages[1].slice(2).every(button => button === null));
+});
+
+test('deck keys use the measured pane in portrait and landscape', () => {
+  assert.equal(deckKeySize(568, 320), 92);
+  assert.equal(deckKeySize(640, 360), 106);
+  assert.equal(deckKeySize(844, 390), 116);
+  assert.equal(deckKeySize(390, 730), 86);
+  assert.equal(deckKeySize(1400, 1000), 124);
 });
 
 test('appearance parsing accepts exactly light/dark and sanitizes custom colors', () => {
@@ -50,7 +58,9 @@ test('custom hex normalization supports shorthand and rejects unsafe values', ()
 test('appearance sheet keeps useful compact and full-screen detents', () => {
   assert.equal(compactSheetHeight(800), 576);
   assert.equal(compactSheetHeight(500), 470);
-  assert.equal(compactSheetHeight(420), 420);
+  assert.equal(compactSheetHeight(420), 302);
+  assert.equal(compactSheetHeight(360), 259);
+  assert.equal(compactSheetHeight(220), 220);
   assert.equal(clampSheetHeight(300, 470, 700), 470);
   assert.equal(clampSheetHeight(900, 470, 700), 700);
 });

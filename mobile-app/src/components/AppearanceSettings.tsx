@@ -164,10 +164,7 @@ export function AppearanceSettings({ preferences, palette, onChange, onClose }: 
           </Pressable>
 
           <View style={styles.headingRow}>
-            <View style={styles.headingText}>
-              <Text style={[styles.eyebrow, { color: palette.accent }]}>LIQUID GLASS</Text>
-              <Text style={[styles.title, { color: palette.text }]}>Appearance</Text>
-            </View>
+            <Text style={[styles.title, { color: palette.text }]}>Appearance</Text>
             <GlassControl palette={palette} title="Close" icon="x" compact onPress={closeOnce} />
           </View>
 
@@ -282,8 +279,6 @@ const styles = StyleSheet.create({
   handleTouch: { alignSelf: 'center', width: 88, minHeight: 44, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   handle: { width: 42, height: 5, borderRadius: 3 },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  headingText: { gap: 2 },
-  eyebrow: { fontSize: 9, fontWeight: '900', letterSpacing: 1.7 },
   title: { fontSize: 25, fontWeight: '800', letterSpacing: -0.7 },
   content: { gap: 12, paddingBottom: 8 },
   sectionTitle: { fontSize: 13, fontWeight: '800', marginTop: 2 },

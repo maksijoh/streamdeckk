@@ -2,11 +2,22 @@ import { createContext, useContext, type PropsWithChildren, type ReactNode, type
 import { Platform, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { BlurView } from 'expo-blur';
+import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable, type GlassStyle } from 'expo-glass-effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import { type AppearancePalette, withAlpha } from '../appearance';
 
+const androidVersion = typeof Platform.Version === 'number' ? Platform.Version : Number.parseInt(String(Platform.Version), 10);
 const nativeBlurMethod = Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' as const : undefined;
 const BlurTargetContext = createContext<RefObject<View | null> | undefined>(undefined);
+
+export const nativeLiquidGlassAvailable = (() => {
+  if (Platform.OS !== 'ios') return false;
+  try {
+    return isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+  } catch {
+    return false;
+  }
+})();
 
 export function GlassBlurProvider({ children, target }: PropsWithChildren<{ target: RefObject<View | null> }>) {
   return <BlurTargetContext.Provider value={target}>{children}</BlurTargetContext.Provider>;
@@ -16,6 +27,54 @@ export function useGlassBlurTarget() {
   return useContext(BlurTargetContext);
 }
 
+type MaterialProps = {
+  palette: AppearancePalette;
+  intensity: number;
+  effectStyle?: GlassStyle;
+  interactive?: boolean;
+  fallbackTint?: number;
+  borderRadius?: number;
+};
+
+export function GlassMaterial({
+  palette,
+  intensity,
+  effectStyle = 'regular',
+  interactive = false,
+  fallbackTint = 0.16,
+  borderRadius = 22,
+}: MaterialProps) {
+  const blurTarget = useGlassBlurTarget();
+  const dark = palette.theme === 'dark';
+  const effectiveFallbackTint = Platform.OS === 'android' && androidVersion < 31
+    ? Math.max(fallbackTint, 0.38)
+    : fallbackTint;
+
+  if (nativeLiquidGlassAvailable) {
+    return <GlassView
+      pointerEvents="none"
+      colorScheme={dark ? 'dark' : 'light'}
+      glassEffectStyle={effectStyle}
+      isInteractive={interactive}
+      tintColor={withAlpha(palette.glass, dark ? 0.24 : 0.14)}
+      style={[StyleSheet.absoluteFill, { borderRadius }]}
+    />;
+  }
+
+  return <>
+    <BlurView
+      pointerEvents="none"
+      tint={dark ? 'dark' : 'light'}
+      intensity={intensity}
+      blurMethod={blurTarget ? nativeBlurMethod : undefined}
+      blurTarget={blurTarget}
+      blurReductionFactor={Platform.OS === 'android' ? 2 : 1}
+      style={StyleSheet.absoluteFill}
+    />
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(palette.glass, effectiveFallbackTint) }]} />
+  </>;
+}
+
 type SurfaceProps = PropsWithChildren<{
   palette: AppearancePalette;
   style?: StyleProp<ViewStyle>;
@@ -23,7 +82,6 @@ type SurfaceProps = PropsWithChildren<{
 }>;
 
 export function GlassSurface({ children, palette, style, variant = 'panel' }: SurfaceProps) {
-  const blurTarget = useGlassBlurTarget();
   const dark = palette.theme === 'dark';
   const opacity = variant === 'subtle' ? (dark ? 0.16 : 0.25) : variant === 'floating' ? (dark ? 0.38 : 0.46) : (dark ? 0.24 : 0.34);
   const intensity = variant === 'subtle' ? 32 : variant === 'floating' ? 62 : 46;
@@ -31,22 +89,20 @@ export function GlassSurface({ children, palette, style, variant = 'panel' }: Su
     styles.surface,
     variant === 'floating' && styles.floating,
     {
-      backgroundColor: withAlpha(palette.glass, opacity),
-      borderColor: withAlpha(palette.buttonHighlight, dark ? 0.28 : 0.7),
+      backgroundColor: nativeLiquidGlassAvailable ? 'transparent' : withAlpha(palette.glass, opacity * 0.34),
+      borderColor: nativeLiquidGlassAvailable ? 'transparent' : withAlpha(palette.buttonHighlight, dark ? 0.28 : 0.7),
       shadowColor: palette.shadow,
     },
     style,
   ]}>
-    <BlurView
-      pointerEvents="none"
-      tint={dark ? 'dark' : 'light'}
+    <GlassMaterial
+      palette={palette}
       intensity={intensity}
-      blurMethod={blurTarget ? nativeBlurMethod : undefined}
-      blurTarget={blurTarget}
-      blurReductionFactor={2.5}
-      style={StyleSheet.absoluteFill}
+      effectStyle={variant === 'subtle' ? 'clear' : 'regular'}
+      fallbackTint={opacity}
+      borderRadius={22}
     />
-    <LinearGradient
+    {!nativeLiquidGlassAvailable && <LinearGradient
       pointerEvents="none"
       colors={[
         withAlpha(palette.buttonHighlight, dark ? 0.2 : 0.38),
@@ -57,15 +113,15 @@ export function GlassSurface({ children, palette, style, variant = 'panel' }: Su
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={StyleSheet.absoluteFill}
-    />
-    <LinearGradient
+    />}
+    {!nativeLiquidGlassAvailable && <LinearGradient
       pointerEvents="none"
       colors={['transparent', withAlpha(palette.glass, dark ? 0.16 : 0.22)]}
       locations={[0.38, 1]}
       style={StyleSheet.absoluteFill}
-    />
-    <View pointerEvents="none" style={[styles.topReflection, { backgroundColor: withAlpha(palette.buttonHighlight, dark ? 0.28 : 0.64) }]} />
-    <View pointerEvents="none" style={[styles.innerEdge, { borderColor: withAlpha('#FFFFFF', dark ? 0.08 : 0.42) }]} />
+    />}
+    {!nativeLiquidGlassAvailable && <View pointerEvents="none" style={[styles.topReflection, { backgroundColor: withAlpha(palette.buttonHighlight, dark ? 0.28 : 0.64) }]} />}
+    {!nativeLiquidGlassAvailable && <View pointerEvents="none" style={[styles.innerEdge, { borderColor: withAlpha('#FFFFFF', dark ? 0.08 : 0.42) }]} />}
     {children}
   </View>;
 }
@@ -82,7 +138,6 @@ type ControlProps = {
 };
 
 export function GlassControl({ palette, title, onPress, disabled = false, icon, compact = false, selected = false, leading }: ControlProps) {
-  const blurTarget = useGlassBlurTarget();
   return <Pressable
     accessibilityRole="button"
     accessibilityLabel={title}
@@ -93,24 +148,16 @@ export function GlassControl({ palette, title, onPress, disabled = false, icon, 
       styles.control,
       compact && styles.compact,
       {
-        backgroundColor: selected ? withAlpha(palette.accent, palette.theme === 'dark' ? 0.18 : 0.12) : withAlpha(palette.glass, palette.theme === 'dark' ? 0.2 : 0.3),
-        borderColor: selected ? withAlpha(palette.accent, 0.72) : withAlpha(palette.buttonHighlight, palette.theme === 'dark' ? 0.24 : 0.58),
+        backgroundColor: nativeLiquidGlassAvailable ? 'transparent' : selected ? withAlpha(palette.accent, palette.theme === 'dark' ? 0.18 : 0.12) : withAlpha(palette.glass, palette.theme === 'dark' ? 0.08 : 0.12),
+        borderColor: nativeLiquidGlassAvailable ? 'transparent' : selected ? withAlpha(palette.accent, 0.72) : withAlpha(palette.buttonHighlight, palette.theme === 'dark' ? 0.24 : 0.58),
         shadowColor: palette.shadow,
       },
       pressed && styles.controlPressed,
       disabled && styles.disabled,
     ]}
   >
-    <BlurView
-      pointerEvents="none"
-      tint={palette.theme === 'dark' ? 'dark' : 'light'}
-      intensity={30}
-      blurMethod={blurTarget ? nativeBlurMethod : undefined}
-      blurTarget={blurTarget}
-      blurReductionFactor={2.5}
-      style={StyleSheet.absoluteFill}
-    />
-    <LinearGradient
+    <GlassMaterial palette={palette} intensity={36} interactive effectStyle="regular" fallbackTint={palette.theme === 'dark' ? 0.2 : 0.3} borderRadius={16} />
+    {!nativeLiquidGlassAvailable && <LinearGradient
       pointerEvents="none"
       colors={[
         withAlpha(palette.buttonHighlight, palette.theme === 'dark' ? 0.16 : 0.32),
@@ -121,7 +168,8 @@ export function GlassControl({ palette, title, onPress, disabled = false, icon, 
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={StyleSheet.absoluteFill}
-    />
+    />}
+    {disabled && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(palette.background, 0.46) }]} />}
     {leading}
     {icon && <Feather name={icon} size={compact ? 18 : 17} color={selected ? palette.accent : palette.text} />}
     {!compact && <Text numberOfLines={1} style={[styles.controlText, { color: selected ? palette.accent : palette.text }]}>{title}</Text>}
@@ -191,6 +239,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   disabled: {
-    opacity: 0.42,
+    shadowOpacity: 0.03,
+    elevation: 0,
   },
 });
